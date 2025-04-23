@@ -1,0 +1,12 @@
+# 機密ファイル
+salesapisheet-e10ba3c891e3.json
+.streamlit/secrets.toml
+
+# Pythonキャッシュ類
+__pycache__/
+*.py[cod]
+
+# その他（ログや一時ファイル）
+*.log
+*.db
+.env
