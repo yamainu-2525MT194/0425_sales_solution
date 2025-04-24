@@ -1,0 +1,23 @@
+[33mcommit 5b6bd1f4cce7a018802129c3f41dba8c7e6814fc[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: yamainu-2525MT194 <7765yuuki@gmail.com>
+Date:   Thu Apr 24 11:56:23 2025 +0900
+
+    初回コミット：営業分析アプリ統合版(spreed&doc)
+
+[33mcommit 4ab6375579a425b28adbb38db55b11f0b15c6552[m
+Author: yamainu-2525MT194 <7765yuuki@gmail.com>
+Date:   Wed Apr 23 21:29:58 2025 +0900
+
+    Google認証をsecrets対応に修正
+
+[33mcommit 346f5116dd5a954af5f3558fe147babb93dd2ce6[m
+Author: yamainu-2525MT194 <7765yuuki@gmail.com>
+Date:   Wed Apr 23 20:49:16 2025 +0900
+
+    Added Dev Container Folder
+
+[33mcommit b52e58f6553b2cdf9f7e2c8ee296a339a09d642c[m
+Author: yamainu-2525MT194 <7765yuuki@gmail.com>
+Date:   Wed Apr 23 20:33:20 2025 +0900
+
+    初回コミット：AI営業分析アプリ
