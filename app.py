@@ -1,122 +1,138 @@
 # --- ファイル名: app.py（OpenAI v1 対応 + GPT-3.5 使用版）
 
+
 import streamlit as st
 import pandas as pd
 import numpy as np
-import json
 import re
+import json
 from openai import OpenAI
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LinearRegression
 from sklearn.cluster import KMeans
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_squared_error, classification_report
-from lightgbm import LGBMRegressor
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+import gspread
+from gspread_dataframe import set_with_dataframe
+import matplotlib.pyplot as plt
+import seaborn as sns
+from io import StringIO
 
-st.set_page_config(page_title="営業AI分析ツール（ローカル対応）", layout="wide")
-st.title("📊 営業AI分析ダッシュボード（CSV or Google Docs対応）")
+st.set_page_config(page_title="営業日報AI解析ダッシュボード（拡張300行）", layout="wide")
+st.title("📊 営業日報AI解析ツール（全方位拡張）")
 
-# --- 認証情報の読み込み（ローカル .streamlit/secrets.toml） ---
+# --- 認証設定 ---
 credentials_dict = json.loads(st.secrets["gspread_credentials"])
 credentials = service_account.Credentials.from_service_account_info(
     credentials_dict,
-    scopes=["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/documents.readonly"]
+    scopes=["https://www.googleapis.com/auth/documents.readonly", "https://www.googleapis.com/auth/spreadsheets"]
 )
 client_openai = OpenAI(api_key=st.secrets["openai_api_key"])
 
-# --- 入力形式の選択 ---
-input_type = st.radio("データの種類を選択", ["Googleスプレッドシート（CSV）", "Googleドキュメント（日報形式）"])
+# --- ドキュメント入力 ---
+doc_input = st.text_input("📄 GoogleドキュメントID または URL")
+doc_id_match = re.search(r'/d/([a-zA-Z0-9-_]+)', doc_input)
+doc_id = doc_id_match.group(1) if doc_id_match else doc_input.strip()
 
-# --- データ読み込み ---
-df = None
-free_text = ""
-
-if input_type == "Googleスプレッドシート（CSV）":
-    sheet_url = st.text_input("📎 Googleスプレッドシート（CSVリンク）")
-    if sheet_url and "export?format=csv" in sheet_url:
-        try:
-            df = pd.read_csv(sheet_url)
-            df["日付"] = pd.to_datetime(df["日付"], errors="coerce")
-            start_date = st.date_input("開始日", df["日付"].min().date())
-            end_date = st.date_input("終了日", df["日付"].max().date())
-            df = df[(df["日付"] >= pd.to_datetime(start_date)) & (df["日付"] <= pd.to_datetime(end_date))]
-            st.success(f"✅ データ {len(df)} 件を読み込みました")
-        except Exception as e:
-            st.error(f"CSVの読み込みエラー：{e}")
-
-elif input_type == "Googleドキュメント（日報形式）":
-    doc_input = st.text_input("📝 GoogleドキュメントID または URL を入力")
-    match = re.search(r'/d/([a-zA-Z0-9-_]+)', doc_input)
-    doc_id = match.group(1) if match else doc_input.strip()
-
-    if doc_id:
-        try:
-            service = build('docs', 'v1', credentials=credentials)
-            doc = service.documents().get(documentId=doc_id).execute()
-            content = doc.get("body", {}).get("content", [])
-            for c in content:
-                for e in c.get("paragraph", {}).get("elements", []):
-                    free_text += e.get("textRun", {}).get("content", "")
-            st.text_area("📄 抽出された本文（先頭）", free_text[:1000])
-        except Exception as e:
-            st.error(f"ドキュメント取得エラー：{e}")
-
-# --- 数値データ分析（CSVのみ） ---
-if df is not None:
-    st.header("📈 数値データ分析（CSV）")
+if doc_id:
     try:
-        X = df[["荷電数", "提案数_有効"]]
-        y = df["面談獲得数"]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+        service = build('docs', 'v1', credentials=credentials)
+        doc = service.documents().get(documentId=doc_id).execute()
+        content = doc.get("body", {}).get("content", [])
 
-        rf_model = RandomForestRegressor(n_estimators=100).fit(X_train, y_train)
-        st.subheader("📉 面談数予測（Random Forest）")
-        st.write(f"RMSE: {np.sqrt(mean_squared_error(y_test, rf_model.predict(X_test))):.2f}")
+        full_text = ""
+        for c in content:
+            for e in c.get("paragraph", {}).get("elements", []):
+                full_text += e.get("textRun", {}).get("content", "")
 
-        y_binary = (df["提案数_有効"] > df["提案数_有効"].median()).astype(int)
-        log_model = LogisticRegression().fit(X_train, y_binary)
-        st.subheader("📊 提案力の分類（ロジスティック回帰）")
-        st.text(classification_report(y_binary, log_model.predict(X_train)))
+        st.text_area("📋 ドキュメント内容（先頭）", full_text[:1000], height=200)
 
-        kmeans = KMeans(n_clusters=3).fit(X)
-        df["営業タイプ"] = kmeans.labels_
-        st.subheader("🔍 営業タイプの分類（KMeans）")
-        st.dataframe(df[["営業名", "営業タイプ"]].drop_duplicates())
+        # --- 複数人の抽出処理 ---
+        sections = re.split(r"名前：(.+?)\n", full_text)
+        reports = []
+
+        for i in range(1, len(sections), 2):
+            name = sections[i].strip()
+            text = sections[i + 1] if i + 1 < len(sections) else ""
+            data = {"名前": name}
+            matches = re.findall(r"(オファー数|面談獲得数|提案数（有効）|提案数（有効・無効・不明）|配信数|荷電数|面談実施数)：([0-9]+)件", text)
+            for label, value in matches:
+                label = label.replace("（有効）", "_有効").replace("（有効・無効・不明）", "_合計")
+                data[label] = int(value)
+            reports.append(data)
+
+        df = pd.DataFrame(reports).fillna(0)
+        st.dataframe(df)
+
+        # --- ダウンロード & 出力 ---
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 CSVとして保存", csv, "report_data.csv", "text/csv")
+
+        sheet_url = st.text_input("📎 スプレッドシートURL（追記先）")
+        if sheet_url:
+            try:
+                gc = gspread.authorize(credentials)
+                sheet_id = re.search(r"/d/([\w-]+)", sheet_url).group(1)
+                sh = gc.open_by_key(sheet_id).sheet1
+                set_with_dataframe(sh, df, row=sh.row_count + 1)
+                st.success("✅ 追記完了")
+            except Exception as e:
+                st.warning(f"スプレッドシートエラー：{e}")
+
+        # --- 分析・可視化 ---
+        st.subheader("📈 面談数回帰予測")
+        if '面談獲得数' in df.columns:
+            features = df.drop(columns=['面談獲得数', '名前'], errors='ignore').fillna(0)
+            model = LinearRegression().fit(features, df['面談獲得数'])
+            df['予測面談数'] = model.predict(features)
+            st.dataframe(df[['名前', '面談獲得数', '予測面談数']])
+
+        st.subheader("🔍 クラスタリング + PCA 可視化")
+        scaler = StandardScaler()
+        scaled = scaler.fit_transform(df.drop(columns=['名前'], errors='ignore'))
+        kmeans = KMeans(n_clusters=2, n_init='auto').fit(scaled)
+        df['営業タイプ'] = kmeans.labels_
+
+        pca = PCA(n_components=2)
+        components = pca.fit_transform(scaled)
+        pca_df = pd.DataFrame(components, columns=['PC1', 'PC2'])
+        pca_df['名前'] = df['名前']
+        pca_df['営業タイプ'] = df['営業タイプ']
+
+        fig, ax = plt.subplots()
+        sns.scatterplot(data=pca_df, x='PC1', y='PC2', hue='営業タイプ', style='名前', ax=ax)
+        st.pyplot(fig)
+
+        st.subheader("📊 相関マトリクス")
+        corr = df.drop(columns=['名前'], errors='ignore').corr()
+        fig2, ax2 = plt.subplots(figsize=(8, 6))
+        sns.heatmap(corr, annot=True, fmt=".2f", cmap="Blues", ax=ax2)
+        st.pyplot(fig2)
+
+        st.subheader("🧠 GPT：要約・改善・インサイト抽出")
+        for i in range(1, len(sections), 2):
+            name = sections[i].strip()
+            content = sections[i + 1][:1500]
+            prompt = f"以下は{name}さんの営業日報です。成果、課題、対策、工夫点、そして改善案を整理してください。\n{content}"
+            response = client_openai.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            st.markdown(f"### {name} さんへのAI分析")
+            st.markdown(response.choices[0].message.content)
+
+        # --- 追加機能：目標との乖離チェック ---
+        st.subheader("🎯 各営業の目標達成度分析")
+        target_offer = st.number_input("目標オファー数（全営業共通）", value=3)
+        if 'オファー数' in df.columns:
+            df['オファー達成率'] = df['オファー数'] / target_offer
+            fig3, ax3 = plt.subplots()
+            sns.barplot(data=df, x='名前', y='オファー達成率', ax=ax3)
+            ax3.axhline(1, color='red', linestyle='--')
+            st.pyplot(fig3)
 
     except Exception as e:
-        st.error(f"数値分析中のエラー：{e}")
-
-# --- GPT要約・提案セクション（共通） ---
-st.header("💬 GPTによるAI要約・アドバイス")
-
-if df is not None:
-    try:
-        issues = "\n".join(df["課題"].dropna().astype(str))
-        good = "\n".join(df["良かった点"].dropna().astype(str))
-        counter = "\n".join(df["課題を解決する為の対策"].dropna().astype(str))
-
-        prompt = f"以下の営業報告から、成功要因・課題・対策を要約してください。\n良かった点:\n{good}\n課題:\n{issues}\n対策案:\n{counter}"
-
-        result = client_openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        st.markdown(result.choices[0].message.content)
-
-    except Exception as e:
-        st.error(f"GPT分析中のエラー：{e}")
-
-elif free_text:
-    prompt = f"以下の営業日報を分析し、数値成果・面談所感・顧客所感・課題・対策をまとめ、AIからのアドバイスも追加してください：\n{free_text[:3500]}"
-    try:
-        result = client_openai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        st.markdown(result.choices[0].message.content)
-    except Exception as e:
-        st.error(f"GPT処理エラー：{e}")
+        st.error(f"ドキュメント処理エラー：{e}")
 else:
-    st.info("左からCSVまたはGoogleドキュメントを選択し、データを読み込んでください。")
+    st.info("GoogleドキュメントURLまたはIDを入力してください。")
