@@ -11,7 +11,7 @@ import matplotlib
 import matplotlib.font_manager as fm
 
 # ───────── 日本語フォントの登録 ─────────
-font_path = "fonts/ipaexg.ttf"              # プロジェクト内のパス
+font_path = "fonts/ipaexm.ttf"              # プロジェクト内のパス
 fm.fontManager.addfont(font_path)            # フォントをMatplotlibに追加
 
 # フォントプロパティ経由で実際のフォント名を取得
