@@ -22,8 +22,8 @@ plt.rcParams['font.family'] = jp_font        # デフォルトフォントを日
 plt.rcParams['axes.unicode_minus'] = False   # マイナス記号を正しく表示
 # ───────────────────────────────────────
 # Windows環境であれば Meiryo を指定
-matplotlib.rcParams['font.family'] = 'Meiryo'
-matplotlib.rcParams['axes.unicode_minus'] = False
+# matplotlib.rcParams['font.family'] = 'Meiryo'
+# matplotlib.rcParams['axes.unicode_minus'] = False
 import seaborn as sns
 import plotly.graph_objects as go
 from sklearn.preprocessing import StandardScaler
