@@ -8,10 +8,19 @@ import json
 import openai
 import matplotlib.pyplot as plt
 import matplotlib
-# 日本語フォント設定（IPAexゴシックを使用）
-matplotlib.rcParams['font.family'] = 'IPAPGothic'
-matplotlib.rcParams['font.sans-serif'] = ['IPAPGothic']
-matplotlib.rcParams['axes.unicode_minus'] = False
+import matplotlib.font_manager as fm
+
+# ───────── 日本語フォントの登録 ─────────
+font_path = "fonts/ipaexg.ttf"              # プロジェクト内のパス
+fm.fontManager.addfont(font_path)            # フォントをMatplotlibに追加
+
+# フォントプロパティ経由で実際のフォント名を取得
+jp_font = fm.FontProperties(fname=font_path).get_name()
+
+# MatplotlibのrcParamsに設定
+plt.rcParams['font.family'] = jp_font        # デフォルトフォントを日本語フォントへ
+plt.rcParams['axes.unicode_minus'] = False   # マイナス記号を正しく表示
+# ───────────────────────────────────────
 # Windows環境であれば Meiryo を指定
 matplotlib.rcParams['font.family'] = 'Meiryo'
 matplotlib.rcParams['axes.unicode_minus'] = False
